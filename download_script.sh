@@ -14,6 +14,14 @@ log() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1"
 }
 
+# 检查wget是否可用
+check_wget() {
+    if ! command -v wget &> /dev/null; then
+        log "错误: wget 未安装"
+        exit 1
+    fi
+}
+
 # 下载m3u文件
 download_m3u() {
     local timestamp=$(date '+%Y%m%d_%H%M%S')
@@ -24,21 +32,28 @@ download_m3u() {
     log "下载URL: $DOWNLOAD_URL"
     log "保存路径: $filepath"
     
-    # 使用curl下载文件
-    if curl -s -f -L "$DOWNLOAD_URL" -o "$filepath"; then
+    # 使用wget下载文件
+    if wget -q --timeout=30 --tries=3 -O "$filepath" "$DOWNLOAD_URL"; then
         if [ -s "$filepath" ]; then
             log "下载成功: $filename"
             # 检查文件内容
             local file_size=$(wc -c < "$filepath")
             local line_count=$(wc -l < "$filepath")
             log "文件大小: ${file_size} bytes, 行数: ${line_count}"
+            
+            # 验证文件格式（简单的m3u格式检查）
+            if head -n1 "$filepath" | grep -q "^#EXTM3U"; then
+                log "文件格式验证: 有效的M3U文件"
+            else
+                log "警告: 文件可能不是标准M3U格式"
+            fi
         else
             log "警告: 下载的文件为空"
             rm -f "$filepath"
             return 1
         fi
     else
-        log "错误: 下载失败 - curl退出代码: $?"
+        log "错误: wget下载失败 - 退出代码: $?"
         return 1
     fi
 }
@@ -51,36 +66,58 @@ cleanup_old_files() {
     # 查找并删除超过保留期限的m3u文件
     while IFS= read -r -d '' file; do
         if [ -n "$file" ]; then
-            log "删除旧文件: $(basename "$file")"
+            local file_date=$(stat -c %y "$file" | cut -d' ' -f1)
+            log "删除旧文件: $(basename "$file") (创建于: $file_date)"
             rm -f "$file"
             ((deleted_count++))
         fi
-    done < <(find "$DOWNLOAD_DIR" -name "*.m3u" -mtime "+${RETENTION_DAYS}" -print0)
+    done < <(find "$DOWNLOAD_DIR" -name "playlist_*.m3u" -mtime "+${RETENTION_DAYS}" -print0 2>/dev/null)
     
     log "清理完成，删除了 ${deleted_count} 个文件"
+    
+    # 显示当前保留的文件
+    local remaining_files=$(find "$DOWNLOAD_DIR" -name "playlist_*.m3u" | wc -l)
+    log "当前保留的文件数: ${remaining_files} 个"
 }
 
-# 主循环
-main() {
-    log "=== M3U下载器启动 ==="
-    log "配置参数:"
+# 显示当前配置
+show_config() {
+    log "=== M3U下载器配置 ==="
+    log "下载URL: $DOWNLOAD_URL"
     log "下载间隔: ${INTERVAL_HOURS}小时"
     log "文件保留: ${RETENTION_DAYS}天"
     log "下载目录: ${DOWNLOAD_DIR}"
     log "===================="
+}
+
+# 主循环
+main() {
+    log "M3U下载器启动"
     
-    # 立即执行一次下载
+    # 检查wget是否可用
+    check_wget
+    
+    # 显示配置
+    show_config
+    
+    # 立即执行一次下载和清理
+    log "执行初始下载..."
     download_m3u
+    cleanup_old_files
+    
+    # 计算循环次数
+    local cycle_count=0
     
     while true; do
+        ((cycle_count++))
         local next_run=$(date -d "+${INTERVAL_HOURS} hours" '+%Y-%m-%d %H:%M:%S')
-        log "下一次下载时间: ${next_run}"
+        log "第 ${cycle_count} 轮循环 - 下一次下载时间: ${next_run}"
         log "等待 ${INTERVAL_HOURS} 小时..."
         
         # 等待指定小时数
         sleep "${INTERVAL_HOURS}h"
         
-        log "开始定时下载任务..."
+        log "开始第 ${cycle_count} 轮下载任务..."
         
         # 执行下载
         if download_m3u; then
@@ -91,6 +128,8 @@ main() {
         
         # 清理旧文件
         cleanup_old_files
+        
+        log "第 ${cycle_count} 轮任务完成"
     done
 }
 
