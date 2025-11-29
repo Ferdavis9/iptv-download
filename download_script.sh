@@ -6,6 +6,13 @@ INTERVAL_HOURS=${INTERVAL_HOURS:-24}
 RETENTION_DAYS=${RETENTION_DAYS:-30}
 DOWNLOAD_DIR=${DOWNLOAD_DIR:-"/data"}
 
+# 设置时区（确保使用中国时间）
+export TZ=${TZ:-"Asia/Shanghai"}
+
+# 显示当前容器时间（用于调试）
+echo "容器当前时间: $(date)"
+echo "容器时区设置: $TZ"
+
 # 创建下载目录
 mkdir -p "$DOWNLOAD_DIR"
 
@@ -27,7 +34,7 @@ rename_existing_playlist() {
     local playlist_path="${DOWNLOAD_DIR}/playlist.m3u"
     
     if [ -f "$playlist_path" ]; then
-        # 获取文件的修改时间（月日格式）
+        # 获取文件的修改时间（月日格式）- 使用中国时区
         local file_date=$(date -r "$playlist_path" '+%m%d')
         local new_filename="playlist${file_date}.m3u"
         local new_filepath="${DOWNLOAD_DIR}/${new_filename}"
@@ -71,6 +78,10 @@ download_m3u() {
                 local file_size=$(wc -c < "$filepath")
                 local line_count=$(wc -l < "$filepath")
                 log "文件大小: ${file_size} bytes, 行数: ${line_count}"
+                
+                # 记录文件修改时间（中国时区）
+                local file_mtime=$(date -r "$filepath" '+%Y-%m-%d %H:%M:%S')
+                log "文件修改时间: ${file_mtime} (中国标准时间)"
             else
                 log "警告: 下载的文件不是标准M3U格式，已丢弃"
                 rm -f "$temp_filepath"
@@ -113,10 +124,14 @@ cleanup_old_files() {
     local remaining_files=$(find "$DOWNLOAD_DIR" -maxdepth 1 -name "playlist*.m3u" | wc -l)
     log "当前保留的文件数: ${remaining_files} 个"
     
-    # 列出所有保留的文件
+    # 列出所有保留的文件（使用中国时区显示）
     if [ "$remaining_files" -gt 0 ]; then
         log "当前保留的文件列表:"
-        find "$DOWNLOAD_DIR" -maxdepth 1 -name "playlist*.m3u" -printf "  - %f (修改时间: %TY-%Tm-%Td %TH:%TM)\n" 2>/dev/null | sort
+        find "$DOWNLOAD_DIR" -maxdepth 1 -name "playlist*.m3u" -exec sh -c '
+            for file; do
+                echo "  - $(basename "$file") (修改时间: $(TZ=Asia/Shanghai date -r "$file" +"%Y-%m-%d %H:%M:%S"))"
+            done
+        ' sh {} + | sort
     fi
 }
 
@@ -127,6 +142,8 @@ show_config() {
     log "下载间隔: ${INTERVAL_HOURS}小时"
     log "文件保留: ${RETENTION_DAYS}天"
     log "下载目录: ${DOWNLOAD_DIR}"
+    log "容器时区: $TZ"
+    log "当前时间: $(date)"
     log "===================="
 }
 
@@ -155,7 +172,7 @@ main() {
     while true; do
         ((cycle_count++))
         local next_run=$(date -d "+${INTERVAL_HOURS} hours" '+%Y-%m-%d %H:%M:%S')
-        log "第 ${cycle_count} 轮循环 - 下一次下载时间: ${next_run}"
+        log "第 ${cycle_count} 轮循环 - 下一次下载时间: ${next_run} (中国标准时间)"
         log "等待 ${INTERVAL_HOURS} 小时..."
         
         # 等待指定小时数
