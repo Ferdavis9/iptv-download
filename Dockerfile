@@ -8,8 +8,8 @@ RUN apk add --no-cache \
     tzdata
 
 # 设置中国时区
-RUN ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime
-echo "Asia/Shanghai" > /etc/timezone
+RUN ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && \
+    echo "Asia/Shanghai" > /etc/timezone
 
 # 创建应用目录
 WORKDIR /app
