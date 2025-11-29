@@ -1,10 +1,15 @@
 FROM alpine:3.18
 
-# 安装wget和其他依赖
+# 安装wget、时区数据和其他依赖
 RUN apk add --no-cache \
     wget \
     bash \
-    coreutils
+    coreutils \
+    tzdata
+
+# 设置中国时区
+RUN ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime
+echo "Asia/Shanghai" > /etc/timezone
 
 # 创建应用目录
 WORKDIR /app
@@ -21,6 +26,7 @@ ENV DOWNLOAD_URL="https://bc.188766.xyz/?ip=&mishitong=true&mima=mianfeibuhuaqia
 ENV INTERVAL_HOURS=24
 ENV RETENTION_DAYS=30
 ENV DOWNLOAD_DIR="/data"
+ENV TZ="Asia/Shanghai"
 
 # 设置卷
 VOLUME ["/data"]
