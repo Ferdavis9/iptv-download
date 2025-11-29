@@ -1,8 +1,8 @@
 FROM alpine:3.18
 
-# 安装依赖
+# 安装wget和其他依赖
 RUN apk add --no-cache \
-    curl \
+    wget \
     bash \
     coreutils
 
